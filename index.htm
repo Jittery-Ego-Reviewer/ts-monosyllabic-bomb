@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>之音炸彈遊戲(Boom)</title>
+    <style>
+        :root {
+            --bg-color: #2c3e50;
+            --grid-bg: #34495e;
+            --hole-color: #1a252f;
+            --accent: #e74c3c;
+            --text: #ecf0f1;
+            --card-bg: #fff;
+            --card-text: #2c3e50;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden; /* Prevent scrolling while dragging */
+            touch-action: none; /* Disable default touch actions */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            height: 100vh;
+        }
+
+        /* --- Header / UI --- */
+        #header {
+            width: 90%;
+            max-width: 600px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        #progress-container {
+            width: 100%;
+            height: 10px;
+            background-color: #1a252f;
+            border-radius: 5px;
+            margin-top: 5px;
+            overflow: hidden;
+            max-width: 600px;
+        }
+
+        #progress-bar {
+            height: 100%;
+            width: 0%;
+            background-color: #2ecc71;
+            transition: width 0.3s ease;
+        }
+
+        /* --- Game Area --- */
+        #game-container {
+            position: relative;
+            margin-top: 20px;
+            width: 90vmin;
+            height: 90vmin;
+            max-width: 500px;
+            max-height: 500px;
+            background-color: var(--grid-bg);
+            border-radius: 15px;
+            padding: 10px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 10px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            cursor: none; /* Hide default cursor for custom bomb */
+        }
+
+        .hole {
+            background-color: var(--hole-color);
+            border-radius: 50%;
+            position: relative;
+            overflow: hidden;
+            box-shadow: inset 0 5px 10px rgba(0,0,0,0.5);
+        }
+
+        /* The Word Card */
+        .mole {
+            position: absolute;
+            top: 100%;
+            width: 80%;
+            height: 80%;
+            left: 10%;
+            background-color: var(--card-bg);
+            color: var(--card-text);
+            border-radius: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 2.5rem;
+            font-weight: bold;
+            transition: top 0.1s ease-out;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 4px 0 #bdc3c7;
+            z-index: 2;
+        }
+
+        .mole.up {
+            top: 10%;
+        }
+
+        /* --- Practice Modal (Overlay) --- */
+        #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.85);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+        }
+
+        #modal-card {
+            background-color: white;
+            color: #2c3e50;
+            width: 250px;
+            height: 300px;
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-size: 6rem;
+            font-weight: bold;
+            box-shadow: 0 0 30px rgba(255, 255, 255, 0.2);
+            animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        #st-controls {
+            margin-top: 30px;
+            color: white;
+            text-align: center;
+        }
+
+        .btn-st {
+            background-color: #2ecc71;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            border-radius: 50px;
+            color: white;
+            cursor: pointer;
+            margin-top: 10px;
+            box-shadow: 0 4px 0 #27ae60;
+        }
+        .btn-st:active { transform: translateY(4px); box-shadow: none; }
+
+        /* --- Custom Cursor / Bomb --- */
+        #bomb-cursor {
+            position: fixed;
+            pointer-events: none; /* Let clicks pass through */
+            font-size: 5rem; /* ENLARGED BOMB SIZE */
+            z-index: 50;
+            transform: translate(-50%, -50%);
+            transition: transform 0.1s;
+            text-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+        }
+
+        /* In-hole Explosions (when hitting a card) */
+        .explosion-hole {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #f1c40f 20%, #e74c3c 70%);
+            opacity: 0;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1;
+        }
+        .explode-anim-hole { animation: boomHole 0.3s ease-out; }
+
+        @keyframes boomHole {
+            0% { transform: scale(0.1); opacity: 1; }
+            50% { opacity: 1; }
+            100% { transform: scale(1.5); opacity: 0; }
+        }
+
+        /* --- NEW: Drop Explosion Effect (General bomb drop) --- */
+        .drop-explosion {
+            position: fixed;
+            pointer-events: none;
+            width: 120px;
+            height: 120px;
+            margin-left: -60px; /* Center based on width */
+            margin-top: -60px;  /* Center based on height */
+            background: radial-gradient(circle, #ffff00 10%, #ff4500 50%, rgba(0,0,0,0) 70%);
+            border-radius: 50%;
+            z-index: 55; /* Above bomb cursor, below modal */
+            animation: bigBoom 0.5s ease-out forwards;
+            opacity: 0;
+        }
+
+        @keyframes bigBoom {
+            0% { transform: scale(0.2); opacity: 1; }
+            30% { opacity: 0.9; background: radial-gradient(circle, #ffff00 10%, #ff4500 60%, rgba(0,0,0,0) 80%); }
+            100% { transform: scale(3); opacity: 0; background: radial-gradient(circle, #ff4500 0%, #000 60%, rgba(0,0,0,0) 100%);}
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+
+        /* Start Screen */
+        #start-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 200;
+            text-align: center;
+        }
+        button.start-btn {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 20px 40px;
+            font-size: 1.5rem;
+            border-radius: 10px;
+            cursor: pointer;
+            box-shadow: 0 5px 0 #c0392b;
+        }
+        button.start-btn:active { transform: translateY(5px); box-shadow: none; }
+        .instructions { margin: 20px; color: #bdc3c7; max-width: 400px;}
+
+    </style>
+</head>
+<body>
+
+    <div id="start-screen">
+        <h1>💣之音炸彈遊戲💣</h1>
+        <p class="instructions">
+            <strong>電腦:</strong> 移動滑鼠瞄準，點擊投放炸彈。<br>
+            <strong>平板/手機:</strong> 用手指拖動炸彈，放開手指投放炸彈。<br>
+            <br>
+            家長請按 <strong>Space / Enter</strong> 確認發音正確。
+        </p>
+        <button class="start-btn" onclick="startGame()">開始遊戲 (Start)</button>
+    </div>
+
+    <div id="header">
+        <div>得分: <span id="score">0</span></div>
+        <div>速度: <span id="level">1x</span></div>
+    </div>
+    <div id="progress-container">
+        <div id="progress-bar"></div>
+    </div>
+
+    <div id="game-container" 
+         onmousemove="moveBomb(event)" 
+         onmousedown="visualBombDown()" 
+         onmouseup="dropBombMouse(event)"
+         ontouchmove="moveBombTouch(event)" 
+         ontouchend="dropBombTouch(event)">
+        
+        </div>
+
+    <div id="modal-overlay">
+        <div style="color:white; margin-bottom:10px;">請讀出字卡 (Read Aloud)</div>
+        <div id="modal-card">字</div>
+        <div id="st-controls">
+            <p>家長控制 (Therapist):</p>
+            <p style="font-size: 0.9rem; color: #bdc3c7;">按 Space / Enter 鍵</p>
+            <button class="btn-st" onclick="confirmPronunciation()">✅ 正確 (Correct)</button>
+        </div>
+    </div>
+
+    <div id="bomb-cursor">💣</div>
+
+    <script>
+        // --- Data & Variables ---
+        const wordList = [
+            "子", "張", "讚", "站", "中", "正", "真", "爭", "執", "只", 
+            "金", "做", "作", "坐", "左", "這", "再", "摘", "炸", "昨", 
+            "周", "震", "進", "針", "積", "紫", "紙", "就", "枝", "之", 
+            "豬", "主", "組", "竹", "祝", "助", "蜘", "蛛"
+        ];
+
+        const grid = document.getElementById('game-container');
+        const scoreBoard = document.getElementById('score');
+        const progressBar = document.getElementById('progress-bar');
+        const levelBoard = document.getElementById('level');
+        const bombCursor = document.getElementById('bomb-cursor');
+        const modal = document.getElementById('modal-overlay');
+        const modalCard = document.getElementById('modal-card');
+
+        let score = 0;
+        let lastHole;
+        let timeUp = false;
+        let isPaused = false; // For practice mode
+        let currentSpeed = 1500; // Starting milliseconds
+        let minSpeed = 600;      // Fastest speed
+        let gameTimer;
+        let moleTimer;
+        let totalWordsPracticed = 0;
+        const totalGoal = 20; // Game finishes after 20 correct words
+
+        // Sound Context (Web Audio API)
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        // --- Init Grid ---
+        function createGrid() {
+            grid.innerHTML = ''; // Clear
+            for(let i=0; i<9; i++) {
+                const hole = document.createElement('div');
+                hole.classList.add('hole');
+                
+                const mole = document.createElement('div');
+                mole.classList.add('mole');
+                
+                // Renamed class for clarity vs the new drop explosion
+                const explosion = document.createElement('div');
+                explosion.classList.add('explosion-hole');
+
+                hole.appendChild(mole);
+                hole.appendChild(explosion);
+                grid.appendChild(hole);
+            }
+        }
+
+        // --- Game Logic ---
+
+        function randomTime(min, max) {
+            return Math.round(Math.random() * (max - min) + min);
+        }
+
+        function randomHole(holes) {
+            const idx = Math.floor(Math.random() * holes.length);
+            const hole = holes[idx];
+            if (hole === lastHole) return randomHole(holes);
+            lastHole = hole;
+            return hole;
+        }
+
+        function randomWord() {
+            return wordList[Math.floor(Math.random() * wordList.length)];
+        }
+
+        function peep() {
+            if(isPaused) return;
+
+            const holes = document.querySelectorAll('.hole');
+            const time = randomTime(currentSpeed * 0.5, currentSpeed);
+            const hole = randomHole(holes);
+            const mole = hole.querySelector('.mole');
+            
+            mole.textContent = randomWord();
+            mole.classList.add('up');
+
+            moleTimer = setTimeout(() => {
+                mole.classList.remove('up');
+                if (!timeUp && !isPaused) peep();
+            }, time);
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            scoreBoard.textContent = 0;
+            score = 0;
+            totalWordsPracticed = 0;
+            updateProgress();
+            timeUp = false;
+            isPaused = false;
+            createGrid();
+            
+            // Resume Audio Context if suspended (browser policy)
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            peep();
+        }
+
+        // --- Bomb & Interaction Logic ---
+
+        // Desktop Mouse Movement
+        function moveBomb(e) {
+            bombCursor.style.left = e.clientX + 'px';
+            bombCursor.style.top = e.clientY + 'px';
+        }
+
+        // Visual feedback on click
+        function visualBombDown() {
+            bombCursor.style.transform = "translate(-50%, -50%) scale(0.8)";
+        }
+
+        // Desktop Click/Release
+        function dropBombMouse(e) {
+            bombCursor.style.transform = "translate(-50%, -50%) scale(1)";
+            playSound('boom'); // Play sound immediately on drop
+            spawnExplosion(e.clientX, e.clientY); // Spawn visual effect
+            checkHit(e.clientX, e.clientY);
+        }
+
+        // Mobile Touch Move
+        function moveBombTouch(e) {
+            e.preventDefault(); // Stop scrolling
+            const touch = e.touches[0];
+            bombCursor.style.left = touch.clientX + 'px';
+            bombCursor.style.top = touch.clientY + 'px';
+        }
+
+        // Mobile Touch End (Release)
+        function dropBombTouch(e) {
+            playSound('boom');
+            // Use changedTouches to get the last position of the finger
+            const touch = e.changedTouches[0];
+            spawnExplosion(touch.clientX, touch.clientY); // Spawn visual effect
+            checkHit(touch.clientX, touch.clientY);
+        }
+
+        // --- NEW: Spawn Drop Explosion Visual ---
+        function spawnExplosion(x, y) {
+            const boom = document.createElement('div');
+            boom.classList.add('drop-explosion');
+            boom.style.left = x + 'px';
+            boom.style.top = y + 'px';
+            document.body.appendChild(boom);
+
+            // Remove element after animation completes (0.5s) to prevent memory leaks
+            setTimeout(() => {
+                boom.remove();
+            }, 500);
+        }
+
+        function checkHit(x, y) {
+            if(isPaused) return;
+
+            // Get element at coordinates
+            // We temporarily hide the cursor so elementFromPoint sees what's under it
+            bombCursor.style.display = 'none';
+            let target = document.elementFromPoint(x, y);
+            bombCursor.style.display = 'block';
+
+            // Check if we hit a mole or the text inside it
+            if (target && (target.classList.contains('mole') || target.parentNode.classList.contains('mole'))) {
+                const moleElement = target.classList.contains('mole') ? target : target.parentNode;
+                
+                if (moleElement.classList.contains('up')) {
+                    // HIT!
+                    
+                    // Show in-hole explosion visual (secondary effect)
+                    const explosionHole = moleElement.parentNode.querySelector('.explosion-hole');
+                    explosionHole.classList.remove('explode-anim-hole');
+                    void explosionHole.offsetWidth; // trigger reflow
+                    explosionHole.classList.add('explode-anim-hole');
+
+                    moleElement.classList.remove('up'); // Hide mole immediately
+                    
+                    // Trigger Practice Mode
+                    // Small delay so they see the explosion before the modal appears
+                    setTimeout(() => {
+                         enterPracticeMode(moleElement.textContent);
+                    }, 200);
+                   
+                }
+            }
+        }
+
+        // --- Practice Mode & ST Logic ---
+
+        function enterPracticeMode(word) {
+            isPaused = true;
+            clearTimeout(moleTimer); // Stop the mole from going down automatically
+            
+            modalCard.textContent = word;
+            modal.style.display = 'flex';
+        }
+
+        function confirmPronunciation() {
+            if (!isPaused) return;
+
+            playSound('ding');
+            modal.style.display = 'none';
+            
+            // Update Score & Logic
+            score++;
+            scoreBoard.textContent = score;
+            totalWordsPracticed++;
+            updateProgress();
+
+            // Increase speed
+            if (currentSpeed > minSpeed) {
+                currentSpeed -= 40; 
+                if(currentSpeed < minSpeed) currentSpeed = minSpeed;
+            }
+            
+            // Check win condition
+            if (totalWordsPracticed >= totalGoal) {
+                alert("恭喜！遊戲完成！(Game Completed)");
+                location.reload(); // Reset
+            } else {
+                isPaused = false;
+                setTimeout(peep, 500); // Small delay before next mole
+            }
+        }
+
+        function updateProgress() {
+            const pct = (totalWordsPracticed / totalGoal) * 100;
+            progressBar.style.width = pct + '%';
+            
+            // Calculate pseudo speed level for display
+            const speedLvl = Math.round((1600 - currentSpeed) / 100);
+            levelBoard.textContent = speedLvl + "x";
+        }
+
+        // Listen for Keyboard (ST controls)
+        window.addEventListener('keydown', (e) => {
+            if (modal.style.display === 'flex') {
+                if (e.code === 'Space' || e.code === 'Enter') {
+                    e.preventDefault(); // prevent scrolling
+                    confirmPronunciation();
+                }
+            }
+        });
+
+        // --- Audio Generation (No external assets needed) ---
+        
+        function playSound(type) {
+            if(audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'boom') {
+                // Low frequency bomb explosion sound
+                oscillator.type = 'sawtooth';
+                // Start low, go even lower
+                oscillator.frequency.setValueAtTime(120, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                
+                // Louder gain for explosion
+                gainNode.gain.setValueAtTime(0.8, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.5);
+            } else if (type === 'ding') {
+                // High pitch pleasant ding
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+                
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1);
+                
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 1);
+            }
+        }
+
+    </script>
+</body>
+</html>
